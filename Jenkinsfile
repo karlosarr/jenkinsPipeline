@@ -1,56 +1,50 @@
 pipeline {
     agent any
     parameters {
-        string(name: 'PERSON', defaultValue: 'Mr Jenkins', description: 'Who should I say hello to?')
-
-        text(name: 'BIOGRAPHY', defaultValue: '', description: 'Enter some information about the person')
-
-        booleanParam(name: 'TOGGLE', defaultValue: true, description: 'Toggle this value')
-
-        choice(name: 'CHOICE', choices: ['One', 'Two', 'Three'], description: 'Pick something')
-
-        password(name: 'PASSWORD', defaultValue: 'SECRET', description: 'Enter a password')
-
-        file(name: "FILE", description: "Choose a file to upload")
+        string(name: 'bitbucketURL', description: 'URL de bitcuket')
+        string(name: 'buildFile', description: 'Solución de Visual Studio')
+        string(name: 'projectKey', description: 'Key de sonarqube')
+        string(name: 'projectName', description: 'Nombre del proyecto en sonarqube')
+    }
+    environment {
+        msBuildScannerHome = "C:\\sonar-scanner-msbuild-4.6.0.1930-net46\\"
+        msNuggetHome = "C:\\Nuget\\"
+        msNuggetConfig = "C:\\Nuget\\"
+        msBuildHome = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Community\\MSBuild\\15.0\\Bin\\"
     }
     stages {
-        stage('Example') {
+        stage('Git clone repository') {
             steps {
-                echo "Hello ${params.PERSON}"
-
-                echo "Biography: ${params.BIOGRAPHY}"
-
-                echo "Toggle: ${params.TOGGLE}"
-
-                echo "Choice: ${params.CHOICE}"
-
-                echo "Password: ${params.PASSWORD}"
+                checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: 'bitbucket_access', url: '$bitbucketURL']]]) 
             }
         }
-        stage('Example 2') {
+        stage('Donwload nuggets') {
             steps {
-                echo "Hello ${params.PERSON}"
-
-                echo "Biography: ${params.BIOGRAPHY}"
-
-                echo "Toggle: ${params.TOGGLE}"
-
-                echo "Choice: ${params.CHOICE}"
-
-                echo "Password: ${params.PASSWORD}"
+                bat "${msNuggetHome}nuget.exe restore %buildFile% -ConfigFile ${msNuggetConfig}\\nuget.config"
             }
         }
-        stage('Example 3') {
+        stage('Sonarqube start') {
             steps {
-                echo "Hello ${params.PERSON}"
-
-                echo "Biography: ${params.BIOGRAPHY}"
-
-                echo "Toggle: ${params.TOGGLE}"
-
-                echo "Choice: ${params.CHOICE}"
-
-                echo "Password: ${params.PASSWORD}"
+                withSonarQubeEnv('SonarQube Local') {
+                    bat "${msBuildScannerHome}SonarQube.Scanner.MSBuild.exe begin /k:%projectKey% /n:%projectName% /d:sonar.host.url=%SONAR_HOST_URL% /d:sonar.login=%SONAR_AUTH_TOKEN%"
+                }
+            }
+        }
+        stage('building project') {
+            steps {
+                bat "\"${msBuildHome}MSBuild.exe\" /p:Configuration=Release  /t:Restore /t:build"
+            }
+        }
+        stage('Sonarqube end') {
+            steps {
+                withSonarQubeEnv('SonarQube Local') {
+                    bat "${msBuildScannerHome}SonarQube.Scanner.MSBuild.exe end /d:sonar.login=%SONAR_AUTH_TOKEN%"
+                }
+            }
+        }
+        stage('Clean') {
+            steps {
+                deleteDir()
             }
         }
     }
